@@ -108,10 +108,14 @@ class ConfideEloquentRepository implements ConfideRepository
         $user = $this->model();
 
         $first = true;
+        $hasWhere = false;
+
         foreach ($identityColumns as $attribute) {
             
             if(isset($credentials[$attribute]))
             {
+                $hasWhere = true;
+
                 if($first)
                 {
                     $user = $user->where($attribute, $credentials[$attribute]);        
@@ -124,16 +128,21 @@ class ConfideEloquentRepository implements ConfideRepository
             }            
             else
             {
-                return null;
+                continue;
             }
         }
 
-        $user = $user->get();
+        if($hasWhere)
+	{
+	    $user = $user->get();
+      
+            if(! empty($user)) 
+            {
+                return $user->first();
+            }
 
-        if(! empty($user)) {
-            return $user->first();
-        }
-
+	}
+	    
         return null;
     }
 
@@ -283,9 +292,9 @@ class ConfideEloquentRepository implements ConfideRepository
         return true;
     }
 
-    public function validate(array $rules = array(), array $customMessages = array())
+    public function validate($user, array $rules = array(), array $customMessages = array())
     {
-        return $this->model()->validate($rules, $customMessages);
+        return $user->validate($rules, $customMessages);
     }
 
 }

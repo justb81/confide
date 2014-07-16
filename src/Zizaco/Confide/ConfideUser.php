@@ -131,12 +131,20 @@ class ConfideUser extends Ardent implements UserInterface {
     public function resetPassword( $params )
     {
         $password = array_get($params, 'password', '');
+        $passwordConfirmation = array_get($params, 'password_confirmation', '');
 
         $passwordValidators = array(
             'password' => static::$rules['password'],
             'password_confirmation' => static::$rules['password_confirmation'],
         );
-        $validationResult = static::$app['confide.repository']->validate($passwordValidators);
+        $user = static::$app['confide.repository']->model();
+        $user->unguard();
+        $user->fill(array(
+            'password' => $password,
+            'password_confirmation' => $passwordConfirmation,
+        ));
+        $user->reguard();
+        $validationResult = static::$app['confide.repository']->validate($user, $passwordValidators);
 
         if ( $validationResult )
         {
@@ -146,6 +154,40 @@ class ConfideUser extends Ardent implements UserInterface {
         else{
             return false;
         }
+    }
+
+    /**
+     * Get the token value for the "remember me" session.
+     *
+     * @see \Illuminate\Auth\UserInterface
+     * @return string
+     */
+    public function getRememberToken()
+    {
+        return $this->remember_token;
+    }
+
+    /**
+     * Set the token value for the "remember me" session.
+     *
+     * @see \Illuminate\Auth\UserInterface
+     * @param  string  $value
+     * @return void
+     */
+    public function setRememberToken($value)
+    {
+        $this->remember_token = $value;
+    }
+
+    /**
+     * Get the column name for the "remember me" token.
+     *
+     * @see \Illuminate\Auth\UserInterface
+     * @return string
+     */
+    public function getRememberTokenName()
+    {
+        return 'remember_token';
     }
 
     /**
@@ -163,7 +205,17 @@ class ConfideUser extends Ardent implements UserInterface {
     {
         $duplicated = false;
 
-        if(! $this->id)
+        /*
+         * When EloquentUserProvider call updateRememberToken
+         * it doesn't retrieve rules, so validation on Ardent fails
+         */
+        if (!empty($this->remember_token) && empty($rules))
+        {
+            $rules = static::$rules;
+            $rules = array_diff(array_keys($rules), array('password_confirmation'));
+        }
+
+        if(! $this->getKey())
         {
             $duplicated = static::$app['confide.repository']->userExists( $this );
         }
@@ -174,7 +226,6 @@ class ConfideUser extends Ardent implements UserInterface {
         }
         else
         {
-            static::$app['confide.repository']->validate();
             $this->validationErrors->add(
                 'duplicated',
                 static::$app['translator']->get('confide::confide.alerts.duplicated_credentials')
@@ -194,7 +245,8 @@ class ConfideUser extends Ardent implements UserInterface {
      */
     public function beforeSave($forced = false)
     {
-        if ( empty($this->id) )
+        $id=$this->getKey();
+        if ( empty($id) )
         {
             $this->confirmation_code = md5( uniqid(mt_rand(), true) );
         }
@@ -222,7 +274,7 @@ class ConfideUser extends Ardent implements UserInterface {
      */
     public function afterSave($success=true, $forced = false)
     {
-        if (! $this->confirmed && ! static::$app['cache']->get('confirmation_email_'.$this->id) )
+        if (! $this->confirmed && ! static::$app['cache']->get('confirmation_email_'.$this->getKey()) )
         {
             // on behalf or the config file we should send and email or not
             if (static::$app['config']->get('confide::signup_email') == true)
@@ -234,7 +286,7 @@ class ConfideUser extends Ardent implements UserInterface {
             $signup_cache = (int)static::$app['config']->get('confide::signup_cache');
             if ($signup_cache !== 0)
             {
-                static::$app['cache']->put('confirmation_email_'.$this->id, true, $signup_cache);
+                static::$app['cache']->put('confirmation_email_'.$this->getKey(), true, $signup_cache);
             }
         }
 
